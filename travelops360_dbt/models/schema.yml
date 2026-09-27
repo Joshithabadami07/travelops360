@@ -1,0 +1,55 @@
+version: 2
+
+models:
+
+  - name: stg_rotation_delay
+    description: "Staging model for aircraft rotation and delay propagation."
+
+    columns:
+
+      - name: flight_id
+        tests:
+          - not_null
+          - unique
+
+      - name: aircraft_id
+        tests:
+          - not_null
+
+      - name: flight_date
+        tests:
+          - not_null
+
+      - name: delay_minutes
+        tests:
+          - not_null
+
+      - name: is_cascade_delay
+        tests:
+          - not_null
+
+
+  - name: mart_rotation_delay
+    description: "Aircraft-level daily rotation delay analytics mart."
+
+    columns:
+
+      - name: flight_date
+        tests:
+          - not_null
+
+      - name: aircraft_id
+        tests:
+          - not_null
+
+      - name: total_flights
+        tests:
+          - not_null
+
+      - name: delayed_flights
+        tests:
+          - not_null
+
+      - name: cascade_delay_flights
+        tests:
+          - not_null

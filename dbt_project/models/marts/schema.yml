@@ -1,0 +1,89 @@
+version: 2
+
+models:
+  - name: mart_load_factor
+    description: >
+      Load factor (booked seats / available seats) by route and day.
+      Trend: falling load factor on a route over consecutive weeks signals
+      overcapacity or weak demand. Driver: usually aircraft up-gauge outpacing
+      demand, or a competitor undercutting fares on that route.
+      Action: down-gauge aircraft or trim frequency on chronically low-load-factor
+      routes; feed the route into the demand-forecast model before the next
+      schedule cycle instead of waiting for a full quarter of losses.
+    columns:
+      - name: route_id
+        tests: [not_null]
+      - name: load_factor
+        tests: [not_null]
+
+  - name: mart_delay_minutes
+    description: >
+      Delay-minutes trend by route/day. Driver: usually a specific origin
+      airport (congestion/weather) or aircraft type (turnaround too tight).
+      Action: this feeds the "Delay risk -> operations escalation" automation
+      rule directly — routes crossing the delay-risk threshold should trigger
+      an alert to ops before the next scheduled departure, not after.
+    columns:
+      - name: route_id
+        tests: [not_null]
+
+  - name: mart_cancellation_rate
+    description: >
+      Cancellation rate and top reason code by route/day. Driver: a spike
+      clustered on one day/route (vs. spread evenly) points to an operational
+      or weather event rather than a systemic route problem.
+      Action: a same-day cluster should fire the "Cancellation cluster ->
+      incident workflow" automation rule so ops and customer-support align
+      on one message instead of reacting independently.
+    columns:
+      - name: route_id
+        tests: [not_null]
+
+  - name: mart_baggage_sla
+    description: >
+      Baggage SLA (% of bags not marked DELAYED) by airport/day. Driver:
+      SLA breaches correlate with flight delays and tight ground handling
+      windows at the same airport.
+      Action: sustained SLA breach at one airport should trigger the
+      "Baggage SLA breach -> baggage-team alert" rule and prompt a staffing
+      or process review at that station specifically, not fleet-wide.
+    columns:
+      - name: airport
+        tests: [not_null]
+
+  - name: mart_route_revenue
+    description: >
+      Revenue by route/day from non-refunded bookings. Driver: revenue
+      growth without load-factor growth usually means fare increases are
+      doing the work, which is a ceiling; revenue growth with load factor
+      flat/falling on a route needing attention.
+      Action: reallocate revenue-management effort toward routes where
+      revenue is falling faster than load factor (a pricing problem, fixable
+      fast) vs. routes falling in both (a capacity/network problem).
+    columns:
+      - name: route_id
+        tests: [not_null]
+
+  - name: mart_revenue_per_flight
+    description: >
+      Revenue attributed to each completed flight. Driver: a persistently
+      low revenue-per-flight route with high load factor means the fare
+      floor is set too low for demand.
+      Action: feeds route-profitability analysis directly — routes with
+      high load factor but low revenue-per-flight are the first candidates
+      for a fare-curve adjustment, not a capacity cut.
+    columns:
+      - name: flight_id
+        tests: [unique, not_null]
+
+  - name: mart_customer_complaint_rate
+    description: >
+      Support tickets per 1,000 bookings, by day and issue type. Driver:
+      complaint-rate spikes usually trail delay/cancellation spikes by
+      1-2 days as affected passengers file tickets after the fact.
+      Action: use delay/cancellation marts as a leading indicator and
+      pre-staff support before the complaint spike lands, rather than
+      reacting once ticket volume has already climbed.
+    columns:
+      - name: day
+        tests: [not_null]

@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: travelops
+    schema: travelops
+    tables:
+      - name: dim_airport
+      - name: dim_aircraft
+      - name: dim_route
+      - name: dim_customer
+      - name: dim_date
+      - name: fact_flight
+      - name: fact_cancellation
+      - name: fact_booking
+      - name: fact_baggage
+      - name: fact_support_ticket
+      - name: fact_fare_snapshot
+      - name: fact_flight_status_live
+      - name: fact_baggage_scan_live
+      - name: fact_booking_live
+      - name: mart_rotation_delay_propagation

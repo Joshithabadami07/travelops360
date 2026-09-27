@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: stg_flights
+    columns:
+      - name: flight_id
+        tests: [unique, not_null]
+      - name: route_id
+        tests: [not_null]
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['SCHEDULED', 'BOARDING', 'DEPARTED', 'COMPLETED', 'CANCELLED']
+
+  - name: stg_bookings
+    columns:
+      - name: booking_id
+        tests: [unique, not_null]
+      - name: flight_id
+        tests:
+          - relationships:
+              to: ref('stg_flights')
+              field: flight_id
+      - name: fare
+        tests:
+          - not_null
+
+  - name: stg_baggage
+    columns:
+      - name: bag_id
+        tests: [unique, not_null]
+      - name: booking_id
+        tests:
+          - relationships:
+              to: ref('stg_bookings')
+              field: booking_id
+
+  - name: stg_cancellations
+    columns:
+      - name: flight_id
+        tests: [unique, not_null]
+
+  - name: stg_support_tickets
+    columns:
+      - name: ticket_id
+        tests: [unique, not_null]
+
+  - name: stg_routes
+    columns:
+      - name: route_id
+        tests: [unique, not_null]
+
+  - name: stg_airports
+    columns:
+      - name: airport_id
+        tests: [unique, not_null]
+
+  - name: stg_aircraft
+    columns:
+      - name: aircraft_id
+        tests: [unique, not_null]

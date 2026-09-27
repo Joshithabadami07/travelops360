@@ -1,0 +1,14 @@
+# Copy this to ~/.dbt/profiles.yml (or set DBT_PROFILES_DIR=dbt_project) and
+# adjust the path if you run dbt from somewhere other than the repo root.
+#
+# pip install dbt-duckdb
+
+travelops360:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "../data/warehouse/travelops.duckdb"
+      schema: marts
+      extensions:
+        - httpfs

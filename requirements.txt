@@ -1,0 +1,30 @@
+# Core (week 1-2)
+pandas
+numpy
+pyarrow
+
+# Week 3 — streaming, spark, dbt, warehouse
+duckdb
+kafka-python
+pyspark
+dbt-duckdb
+
+# Week 4 (next) — ML / forecasting
+scikit-learn
+statsmodels
+
+# Week 5 (next) — API
+fastapi
+uvicorn[standard]
+pydantic
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Week 6 (next) — testing
+pytest
+httpx
+
+
+python-dotenv
+PyJWT
+requests
