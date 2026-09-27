@@ -21,8 +21,15 @@ def test_health_endpoint_is_public():
 
 
 def test_operator_can_login_and_access_protected_endpoint():
-    email = os.getenv("TRAVELOPS_OPS_EMAIL", "ops@travelops360.com")
-    password = os.getenv("TRAVELOPS_OPS_PASSWORD", "TravelOps@123")
+    email = os.getenv(
+        "TRAVELOPS_OPS_EMAIL",
+        "ops@travelops360.com"
+    )
+
+    password = os.getenv(
+        "TRAVELOPS_OPS_PASSWORD",
+        "TravelOps@123"
+    )
 
     login_response = client.post(
         "/auth/login",
@@ -42,10 +49,15 @@ def test_operator_can_login_and_access_protected_endpoint():
     token = login_data["access_token"]
 
     protected_response = client.get(
-        "/summary",
+        "/auth/me",
         headers={
             "Authorization": f"Bearer {token}"
         },
     )
 
     assert protected_response.status_code == 200
+
+    protected_data = protected_response.json()
+
+    assert protected_data["email"] == email
+    assert protected_data["role"] == "operator"
