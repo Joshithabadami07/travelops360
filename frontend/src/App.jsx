@@ -16,7 +16,7 @@ import {
 import "./App.css";
 
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://travelops360-api.onrender.com";
 
 
 const AUTH_TOKEN_KEY = "travelops360_access_token";
