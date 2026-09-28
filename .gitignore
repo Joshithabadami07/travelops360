@@ -118,3 +118,8 @@ docker-compose.override.yml
 *_backup.py
 *_backup.jsx
 *.bak
+
+# TravelOps 360 Render deployment data
+!deployment_data/
+!deployment_data/*.parquet
+!deployment_data/*.duckdb
