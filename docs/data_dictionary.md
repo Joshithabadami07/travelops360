@@ -1,92 +1,218 @@
-# TravelOps 360 — Data Dictionary (Bronze Layer)
+# TravelOps 360 — Data Dictionary
 
-## airports.csv
+## 1. Purpose
+
+This data dictionary documents the core warehouse tables used by TravelOps 360.
+
+It defines:
+
+- Table purpose
+- Table grain
+- Primary keys
+- Logical foreign keys
+- Business fields
+- Data types
+- Metadata fields
+- Streaming and monitoring fields
+
+The definitions are based on the implemented DuckDB warehouse schema.
+
+---
+
+# 2. Data Model Overview
+
+The core analytical warehouse contains:
+
+## Dimensions
+
+- `dim_aircraft`
+- `dim_airport`
+- `dim_customer`
+- `dim_date`
+- `dim_route`
+
+## Facts
+
+- `fact_flight`
+- `fact_booking`
+- `fact_baggage`
+- `fact_cancellation`
+- `fact_fare_snapshot`
+- `fact_support_ticket`
+
+## Live Streaming Tables
+
+- `fact_flight_status_live`
+- `fact_baggage_scan_live`
+- `fact_booking_live`
+
+## Monitoring / Governance Tables
+
+- `stream_seen_events`
+- `stream_monitoring`
+- `dq_check_log`
+- `pipeline_run_log`
+
+## Analytical Mart
+
+- `mart_rotation_delay_propagation`
+
+---
+
+# 3. Common Metadata Fields
+
+Most historical warehouse tables contain the following ingestion metadata.
+
 | Field | Type | Description |
 |---|---|---|
-| airport_id | string (PK) | IATA-style 3-letter code |
-| city | string | City served |
-| region | string | North / South / East / West |
-| capacity | int | Approx. daily passenger handling capacity |
+| `_source_file` | VARCHAR | Source file from which the record originated |
+| `_batch_id` | VARCHAR | Identifier for the ingestion/transformation batch |
+| `_ingested_at` | TIMESTAMP | Timestamp at which the record was ingested |
 
-## aircraft.csv
-| Field | Type | Description |
-|---|---|---|
-| aircraft_id | string (PK) | Internal tail/fleet id |
-| type | string | Aircraft type (A320, B737, ...) |
-| seat_capacity | int | Total seats |
+These fields support:
 
-## routes.csv
-| Field | Type | Description |
-|---|---|---|
-| route_id | string (PK) | Route identifier |
-| origin_airport_id | string (FK -> airports) | Departure airport |
-| dest_airport_id | string (FK -> airports) | Arrival airport |
-| popularity | float | Synthetic demand-weight driving load factor & fares |
+- Data lineage
+- Source traceability
+- Batch tracking
+- Auditability
+- Pipeline troubleshooting
 
-## customers.csv
-| Field | Type | Description |
-|---|---|---|
-| customer_id | string (PK) | Customer identifier |
-| name | string | Synthetic name |
-| tier | string | Standard / Silver / Gold / Platinum |
-| home_region | string | Region of residence |
+---
 
-## dim_date.csv
-| Field | Type | Description |
-|---|---|---|
-| date_id | string (PK) | YYYY-MM-DD |
-| date | date | Calendar date |
-| year / month / day | int | Date parts |
-| day_of_week | string | Day name |
-| is_weekend | bool | Sat/Sun flag |
+# 4. Dimension Tables
 
-## flights.csv
-| Field | Type | Description |
-|---|---|---|
-| flight_id | string (PK) | Flight identifier |
-| route_id | string (FK -> routes) | Route flown |
-| aircraft_id | string (FK -> aircraft) | Aircraft operating |
-| scheduled_departure | datetime | Planned departure |
-| actual_departure | datetime, nullable | Actual departure (null if cancelled/not yet departed) |
-| status | string | SCHEDULED / BOARDING / DEPARTED / COMPLETED / CANCELLED |
-| delay_minutes | float, nullable | Departure delay in minutes |
+## 4.1 dim_aircraft
 
-## fares.csv
-| Field | Type | Description |
-|---|---|---|
-| route_id | string (FK -> routes) | Route |
-| cabin | string | Economy / PremiumEconomy / Business |
-| timestamp | datetime | Fare snapshot time (days-to-departure curve) |
-| price | float | Fare in INR |
+### Purpose
 
-## bookings.csv
-| Field | Type | Description |
-|---|---|---|
-| booking_id | string (PK) | Booking identifier |
-| customer_id | string (FK -> customers) | Passenger |
-| flight_id | string (FK -> flights) | Flight booked |
-| fare | float | Fare paid |
-| booking_time | datetime | Time of booking |
-| status | string | CONFIRMED / CHECKED_IN / COMPLETED / REFUNDED / REBOOKED |
+Stores aircraft reference information.
 
-## baggage.csv
-| Field | Type | Description |
-|---|---|---|
-| bag_id | string (PK) | Bag tag id |
-| booking_id | string (FK -> bookings) | Associated booking |
-| scan_time | datetime | Last scan event time |
-| airport | string (FK -> airports) | Scan location |
-| status | string | LOADED / IN_TRANSIT / DELIVERED / DELAYED |
+### Grain
 
-## support_tickets.csv
-| Field | Type | Description |
-|---|---|---|
-| ticket_id | string (PK) | Ticket id |
-| booking_id | string (FK -> bookings) | Related booking |
-| issue_type | string | DELAY_COMPLAINT / BAGGAGE_ISSUE / CANCELLATION / REFUND_REQUEST / SERVICE_QUALITY |
-| created_at | datetime | Ticket creation time |
+One row per aircraft.
 
-## Injected scenarios (for downstream ML/automation demo)
-- **Demand surge window**: 2026-08-27 → 2026-09-02 (elevated load factors, feeds the "demand surge → revenue-management alert" rule)
-- **Cancellation cluster day**: 2026-09-11 (elevated cancel rate + delay spike at hub airports, feeds "cancellation cluster → incident workflow" and "delay risk → operations escalation")
-- **Baggage SLA breach probability** rises with flight delay minutes, feeding "baggage SLA breach → baggage-team alert"
+### Primary Key
+
+`aircraft_id`
+
+| Field | Type | Key | Description |
+|---|---|---|---|
+| `aircraft_id` | VARCHAR | PK | Unique identifier for an aircraft |
+| `type` | VARCHAR | | Aircraft type |
+| `seat_capacity` | INTEGER | | Number of seats available on the aircraft |
+| `_source_file` | VARCHAR | Metadata | Source file |
+| `_batch_id` | VARCHAR | Metadata | Ingestion batch identifier |
+| `_ingested_at` | TIMESTAMP | Metadata | Record ingestion timestamp |
+
+---
+
+## 4.2 dim_airport
+
+### Purpose
+
+Stores airport reference information.
+
+### Grain
+
+One row per airport.
+
+### Primary Key
+
+`airport_id`
+
+| Field | Type | Key | Description |
+|---|---|---|---|
+| `airport_id` | VARCHAR | PK | Unique identifier for an airport |
+| `city` | VARCHAR | | City associated with the airport |
+| `region` | VARCHAR | | Geographic region |
+| `capacity` | INTEGER | | Airport capacity measure |
+| `_source_file` | VARCHAR | Metadata | Source file |
+| `_batch_id` | VARCHAR | Metadata | Ingestion batch identifier |
+| `_ingested_at` | TIMESTAMP | Metadata | Record ingestion timestamp |
+
+---
+
+## 4.3 dim_customer
+
+### Purpose
+
+Stores customer reference information used for passenger and booking analysis.
+
+### Grain
+
+One row per customer.
+
+### Primary Key
+
+`customer_id`
+
+| Field | Type | Key | Description |
+|---|---|---|---|
+| `customer_id` | VARCHAR | PK | Unique customer identifier |
+| `name` | VARCHAR | | Customer name |
+| `tier` | VARCHAR | | Customer tier |
+| `home_region` | VARCHAR | | Customer's home region |
+| `_source_file` | VARCHAR | Metadata | Source file |
+| `_batch_id` | VARCHAR | Metadata | Ingestion batch identifier |
+| `_ingested_at` | TIMESTAMP | Metadata | Record ingestion timestamp |
+
+---
+
+## 4.4 dim_date
+
+### Purpose
+
+Provides calendar attributes for time-based analysis.
+
+### Grain
+
+One row per date.
+
+### Primary Key
+
+`date_id`
+
+| Field | Type | Key | Description |
+|---|---|---|---|
+| `date_id` | VARCHAR | PK | Unique date-dimension identifier |
+| `date` | DATE | | Calendar date |
+| `year` | INTEGER | | Calendar year |
+| `month` | INTEGER | | Calendar month |
+| `day` | INTEGER | | Calendar day |
+| `day_of_week` | VARCHAR | | Name/representation of the day of the week |
+| `is_weekend` | BOOLEAN | | Indicates whether the date is a weekend |
+| `_source_file` | VARCHAR | Metadata | Source file |
+| `_batch_id` | VARCHAR | Metadata | Ingestion batch identifier |
+| `_ingested_at` | TIMESTAMP | Metadata | Record ingestion timestamp |
+
+---
+
+## 4.5 dim_route
+
+### Purpose
+
+Stores route-level reference information.
+
+### Grain
+
+One row per route.
+
+### Primary Key
+
+`route_id`
+
+| Field | Type | Key | Description |
+|---|---|---|---|
+| `route_id` | VARCHAR | PK | Unique route identifier |
+| `origin_airport_id` | VARCHAR | Logical FK | Airport from which the route originates |
+| `dest_airport_id` | VARCHAR | Logical FK | Destination airport |
+| `popularity` | DOUBLE | | Route popularity measure |
+| `_source_file` | VARCHAR | Metadata | Source file |
+| `_batch_id` | VARCHAR | Metadata | Ingestion batch identifier |
+| `_ingested_at` | TIMESTAMP | Metadata | Record ingestion timestamp |
+
+### Relationships
+
+```text
+origin_airport_id → dim_airport.airport_id
+dest_airport_id   → dim_airport.airport_id
