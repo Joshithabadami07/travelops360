@@ -4,15 +4,25 @@ __pycache__
 .git
 .gitignore
 .env
+
 node_modules
 frontend/node_modules
+frontend/dist
 
 data/bronze
 data/silver
 data/spark_output
+data/raw
 
 warehouse
+data/warehouse
+
 analytics/outputs
+
+airflow/logs/
+airflow/logs/**
+airflow/.env
+
 *.parquet
 *.csv
 *.log
