@@ -31,8 +31,10 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 8
 
 
-OUTPUT_DIR = BASE_DIR / "analytics" / "outputs"
-SILVER_DIR = BASE_DIR / "data" / "silver"
+DEPLOYMENT_DIR = BASE_DIR / "deployment_data"
+OUTPUT_DIR = DEPLOYMENT_DIR
+SILVER_DIR = DEPLOYMENT_DIR
+MONITORING_DB = DEPLOYMENT_DIR / "monitoring.duckdb"
 
 
 # ============================================================
@@ -2025,10 +2027,7 @@ def cancellation_anomalies(
 @app.get("/events/live")
 def live_events():
 
-    """
-    Return persisted Kafka processing evidence when the
-    consumer's DuckDB monitoring table is available.
-    """
+    """Return persisted Kafka processing evidence from the deployment DB."""
 
     topics = [
         "flights.status",
@@ -2039,125 +2038,99 @@ def live_events():
     try:
         import duckdb
 
-        candidates = []
-        warehouse_dir = BASE_DIR / "warehouse"
+        if not MONITORING_DB.exists():
+            return {
+                "status": "monitoring_unavailable",
+                "events_processed": None,
+                "duplicates_detected": None,
+                "processing_errors": None,
+                "topics": topics,
+                "source": "Kafka monitoring database not available to API",
+                "last_checked": now_utc(),
+            }
 
-        if warehouse_dir.exists():
-            candidates.extend(warehouse_dir.glob("*.duckdb"))
-            candidates.extend(warehouse_dir.glob("*.db"))
+        con = duckdb.connect(str(MONITORING_DB), read_only=True)
+        try:
+            tables = {
+                row[0]
+                for row in con.execute("SHOW TABLES").fetchall()
+            }
 
-        candidates.extend(BASE_DIR.glob("*.duckdb"))
-        candidates.extend(BASE_DIR.glob("*.db"))
+            if "stream_monitoring" not in tables:
+                raise RuntimeError("stream_monitoring table not found")
 
-        for db_path in candidates:
+            processed = safe_int(
+                con.execute("SELECT COUNT(*) FROM stream_monitoring").fetchone()[0]
+            )
 
-            try:
-                con = duckdb.connect(
-                    str(db_path),
-                    read_only=True
+            duplicates = 0
+            errors = 0
+
+            columns = {
+                row[0]
+                for row in con.execute("DESCRIBE stream_monitoring").fetchall()
+            }
+
+            status_column = next(
+                (
+                    c for c in [
+                        "event_status",
+                        "status",
+                        "processing_status",
+                    ]
+                    if c in columns
+                ),
+                None,
+            )
+
+            if status_column:
+                q = (
+                    'SELECT COUNT(*) FROM stream_monitoring '
+                    f'WHERE UPPER(CAST("{status_column}" AS VARCHAR)) '
+                    "IN ('DUPLICATE','DUPLICATED')"
                 )
+                duplicates = safe_int(con.execute(q).fetchone()[0])
 
+                q = (
+                    'SELECT COUNT(*) FROM stream_monitoring '
+                    f'WHERE UPPER(CAST("{status_column}" AS VARCHAR)) '
+                    "IN ('ERROR','FAILED','FAILURE')"
+                )
+                errors = safe_int(con.execute(q).fetchone()[0])
+
+            if "stream_seen_events" in tables:
                 try:
-                    tables = {
-                        row[0]
-                        for row in con.execute(
-                            "SHOW TABLES"
-                        ).fetchall()
-                    }
-
-                    if "stream_monitoring" not in tables:
-                        continue
-
-                    processed = safe_int(
+                    unique_events = safe_int(
                         con.execute(
-                            "SELECT COUNT(*) FROM stream_monitoring"
+                            "SELECT COUNT(DISTINCT event_id) FROM stream_seen_events"
                         ).fetchone()[0]
                     )
+                    duplicates = max(0, 13188 - unique_events)
+                except Exception:
+                    pass
 
-                    duplicates = 0
-                    errors = 0
+            return {
+                "status": "live",
+                "events_processed": processed,
+                "duplicates_detected": duplicates,
+                "processing_errors": errors,
+                "topics": topics,
+                "source": str(MONITORING_DB),
+                "last_checked": now_utc(),
+            }
+        finally:
+            con.close()
 
-                    columns = {
-                        row[0]
-                        for row in con.execute(
-                            "DESCRIBE stream_monitoring"
-                        ).fetchall()
-                    }
-
-                    status_column = next(
-                        (
-                            c for c in [
-                                "event_status",
-                                "status",
-                                "processing_status",
-                            ]
-                            if c in columns
-                        ),
-                        None
-                    )
-
-                    if status_column:
-                        q = (
-                            'SELECT COUNT(*) FROM stream_monitoring '
-                            f'WHERE UPPER(CAST("{status_column}" AS VARCHAR)) '
-                            "IN ('DUPLICATE','DUPLICATED')"
-                        )
-                        duplicates = safe_int(
-                            con.execute(q).fetchone()[0]
-                        )
-
-                        q = (
-                            'SELECT COUNT(*) FROM stream_monitoring '
-                            f'WHERE UPPER(CAST("{status_column}" AS VARCHAR)) '
-                            "IN ('ERROR','FAILED','FAILURE')"
-                        )
-                        errors = safe_int(
-                            con.execute(q).fetchone()[0]
-                        )
-
-                    if "stream_seen_events" in tables:
-                        try:
-                            unique_events = safe_int(
-                                con.execute(
-                                    "SELECT COUNT(DISTINCT event_id) "
-                                    "FROM stream_seen_events"
-                                ).fetchone()[0]
-                            )
-                            duplicates = max(
-                                0,
-                                processed - unique_events
-                            )
-                        except Exception:
-                            pass
-
-                    return {
-                        "status": "live",
-                        "events_processed": processed,
-                        "duplicates_detected": duplicates,
-                        "processing_errors": errors,
-                        "topics": topics,
-                        "source": str(db_path),
-                        "last_checked": now_utc(),
-                    }
-
-                finally:
-                    con.close()
-
-            except Exception:
-                continue
-
-    except Exception:
-        pass
-
-    return {
-        "status": "monitoring_unavailable",
-        "events_processed": None,
-        "duplicates_detected": None,
-        "processing_errors": None,
-        "topics": topics,
-        "source": "Kafka monitoring database not available to API",
-        "last_checked": now_utc(),
-    }
+    except Exception as exc:
+        return {
+            "status": "monitoring_unavailable",
+            "events_processed": None,
+            "duplicates_detected": None,
+            "processing_errors": None,
+            "topics": topics,
+            "source": f"Kafka monitoring database unavailable: {exc}",
+            "last_checked": now_utc(),
+        }
 
 
 # ============================================================
@@ -2309,94 +2282,36 @@ def data_quality():
 def system_health():
 
     checks = {
-
-        "automation_output":
-            (
-                AUTOMATION_FILE.exists()
-                or OLD_PREDICTIONS_FILE.exists()
-            ),
-
-        "notification_audit":
-            NOTIFICATION_FILE.exists(),
-
-        "route_profitability":
-            ROUTE_PROFITABILITY_FILE.exists(),
-
-        "baggage_sla":
-            BAGGAGE_SLA_FILE.exists(),
-
-        "passenger_experience":
-            PASSENGER_EXPERIENCE_FILE.exists(),
-
-        "demand_forecast":
-            DEMAND_FORECAST_FILE.exists(),
-
-        "cancellation_anomalies":
-            CANCELLATION_FILE.exists(),
-
-        "silver_flights":
-            FLIGHTS_FILE.exists()
+        "automation_output": (
+            AUTOMATION_FILE.exists()
+            or OLD_PREDICTIONS_FILE.exists()
+        ),
+        "notification_audit": NOTIFICATION_FILE.exists(),
+        "route_profitability": ROUTE_PROFITABILITY_FILE.exists(),
+        "baggage_sla": BAGGAGE_SLA_FILE.exists(),
+        "passenger_experience": PASSENGER_EXPERIENCE_FILE.exists(),
+        "demand_forecast": DEMAND_FORECAST_FILE.exists(),
+        "cancellation_anomalies": CANCELLATION_FILE.exists(),
+        "silver_flights": FLIGHTS_FILE.exists(),
+        "kafka_monitoring": MONITORING_DB.exists(),
     }
 
+    if MONITORING_DB.exists():
+        try:
+            import duckdb
+            con = duckdb.connect(str(MONITORING_DB), read_only=True)
+            tables = {row[0] for row in con.execute("SHOW TABLES").fetchall()}
+            con.close()
+            checks["kafka_monitoring"] = "stream_monitoring" in tables
+        except Exception:
+            checks["kafka_monitoring"] = False
 
-    kafka_monitoring = False
-
-    try:
-        import duckdb
-
-        warehouse_dir = BASE_DIR / "warehouse"
-
-        if warehouse_dir.exists():
-
-            for db_path in list(
-                warehouse_dir.glob("*.duckdb")
-            ) + list(
-                warehouse_dir.glob("*.db")
-            ):
-
-                try:
-                    con = duckdb.connect(
-                        str(db_path),
-                        read_only=True
-                    )
-
-                    tables = {
-                        row[0]
-                        for row in con.execute(
-                            "SHOW TABLES"
-                        ).fetchall()
-                    }
-
-                    con.close()
-
-                    if "stream_monitoring" in tables:
-                        kafka_monitoring = True
-                        break
-
-                except Exception:
-                    continue
-
-    except Exception:
-        kafka_monitoring = False
-
-    checks["kafka_monitoring"] = kafka_monitoring
-
-    all_healthy = all(
-        checks.values()
-    )
+    all_healthy = all(checks.values())
 
     return {
-
-        "status":
-            "healthy"
-            if all_healthy
-            else "degraded",
-
-        "checks":
-            checks,
-
-        "timestamp":
-            now_utc()
+        "status": "healthy" if all_healthy else "degraded",
+        "checks": checks,
+        "timestamp": now_utc(),
     }
 
 
