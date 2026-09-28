@@ -112,6 +112,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5177",
         "http://127.0.0.1:5177",
+        "https://travelops360-frontend-67ax.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
